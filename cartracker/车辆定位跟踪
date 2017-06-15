@@ -1,0 +1,409 @@
+// ������λ����.cpp : ��������̨Ӧ�ó��������ڵ㡣
+//
+
+#include "stdafx.h"
+#include "highgui.h"
+#include "cv.h"
+#include <iostream>
+#include <math.h>
+#include"TrackOfCar.h"
+#include<vector>
+#include<fstream>
+using namespace std;
+using namespace cv;
+
+#define FMAX 5
+#define VStdSize 2000
+#define RoadStdPosition 147
+#define RoadStdWidth 290
+#define VStdWidth 40
+#define RoadFarWidth 60
+#define RoadFarNearDis (RoadStdPosition-30)
+#define H (RoadFarNearDis*RoadStdWidth/(RoadStdWidth-RoadFarWidth))
+#define LowBoundary  200
+#define UpBoundary  100
+#define SIZE 65
+struct
+{
+	CvRect rect;
+	CvPoint center;
+	int YON;
+	int OrbitSort;
+	vector<string>position;
+	CvPoint point;
+}a[30];
+
+
+int main()
+{  
+	
+	Mat image_out(1000,2700,CV_8UC(3));
+    CvPoint startPoint=cvPoint(-SIZE,0);
+    TrackOfCar Toc;
+    char play[10],tmpPosition[35];
+	string s;
+	double DisToCam;
+	int num=0,tag=0;
+	CvPoint center1;
+	CvPoint center2;
+
+	int ZS=1,KS=0,ahead=0;
+
+	int b=0,p=0;
+	int flag=0,mm=0;  
+    IplImage* dstt;
+    double length,ObjWidth,area;  
+
+    CvRect rect;   
+
+	IplImage* dst;
+	IplImage*  src=NULL;
+	IplImage*  dstImg=NULL;
+	
+	IplImage* pImg[FMAX],*pBkImg[FMAX],*pDiffImg[FMAX-1]; 
+	CvMat* pFrameMat[FMAX],*pDiffMat[FMAX-1];  
+	
+	for(int i=0;i<FMAX;i++)
+	{
+		pImg[i]=NULL;
+		pBkImg[i]=NULL;
+		pFrameMat[i]=NULL;  
+	}
+	for(int i=0;i<FMAX-1;i++)
+	{
+		pDiffMat[i]=NULL;
+		pDiffImg[i]=NULL;
+	}
+
+	CvCapture* pCapture = NULL;  
+	int nFrmNum = 0;
+	if(!(pCapture = cvCaptureFromFile("vt.avi"))) 
+	{  
+		return 0; 
+	}   
+
+	dst=cvQueryFrame( pCapture );
+
+	int row=dst->height;
+	int col=dst->width;
+	Mat OrbitImg(row,col,CV_8UC(3));
+	Toc.InitOrbitMat(OrbitImg);
+
+	dstImg =   cvCreateImage(cvSize(dst->width, dst->height), IPL_DEPTH_8U,1);
+	dstt =   cvCreateImage(cvSize(dst->width, dst->height), IPL_DEPTH_8U,1);
+	src=  cvCreateImage(cvSize(dst->width, dst->height), dst->depth,dst->nChannels);
+	cvCvtColor(dst, dstImg , CV_BGR2GRAY); 
+   
+	for(int i=0;i<FMAX;i++)
+	{
+		pImg[i] =cvCreateImage(cvSize(dst->width,dst->height), dst->depth,dst->nChannels);
+		pBkImg[i] = cvCreateImage(cvSize(pImg[0]->width, pImg[0]->height), IPL_DEPTH_8U,1);   
+ 
+		pDiffMat[i] = cvCreateMat(pImg[0]->height, pImg[0]->width, CV_32FC1); 
+		pFrameMat[i] = cvCreateMat(pImg[0]->height, pImg[0]->width, CV_32FC1);
+
+		cvCvtColor(pImg[i], pBkImg[i], CV_BGR2GRAY); 
+		cvConvert(pBkImg[i], pFrameMat[i]); 
+	}
+
+	for(int i=0;i<FMAX-1;i++)
+	{
+		pDiffImg[i] = cvCreateImage(cvSize(pImg[0]->width, pImg[0]->height), IPL_DEPTH_8U,1); 
+	}
+
+	CvMemStorage *storage = cvCreateMemStorage(0);  
+	CvMemStorage *storage1 = cvCreateMemStorage(0);  
+	CvSeq * seq = cvCreateSeq(CV_SEQ_ELTYPE_POINT, sizeof(CvSeq), sizeof(CvPoint), storage);  
+	CvSeq * seq1 = cvCreateSeq(CV_SEQ_ELTYPE_POINT, sizeof(CvSeq), sizeof(CvPoint), storage1);
+    CvSeq * tempSeq ; 
+    CvSeq * tempSeq1=seq1 ;
+    CvSeq * tempSeq2;
+
+//	int k=0;
+	int start=0;
+	int imageNum=0;
+	while(dst=cvQueryFrame( pCapture )) 
+	{ 
+		nFrmNum++; 
+		if(nFrmNum <=FMAX) 
+		{  		
+			cvCopy(dst,pImg[nFrmNum-1]);
+			
+		} 
+		else 
+		{ 
+
+			for(int i=0;i<FMAX-1;i++)
+			{
+				cvCopy(pImg[i+1],pImg[i]);
+			}
+			cvCopy(dst,pImg[FMAX-1]);
+			
+			for(int i=0;i<FMAX;i++)
+			{		
+				cvCvtColor(pImg[i], pBkImg[i], CV_BGR2GRAY);   
+		    	cvConvert(pBkImg[i], pFrameMat[i]);  
+
+	
+			}
+			for(int i=1;i<FMAX;i++)
+			{
+				cvAbsDiff(pFrameMat[i], pFrameMat[i-1], pDiffMat[i-1]); 
+             	cvConvert(pDiffMat[i-1],pDiffImg[i-1]); 			   
+			}
+           Toc.getAve(pDiffImg,FMAX-1,dstImg );
+			
+            cvSmooth(dstImg,dstImg,CV_BLUR,7,7,0,0);
+			cvDilate(dstImg,dstImg,NULL,1);
+			cvThreshold(dstImg, dstImg, 20, 180, CV_THRESH_BINARY_INV); 
+            cvShowImage("ave", dstImg );  
+		    //videoCut(dstImg,k+1000);//������ͼ
+			b=0;
+		    int cnt = cvFindContours(dstImg,storage,&seq); 
+		    tempSeq1=seq1;
+		    tempSeq2=seq1->h_next;
+		    cvCopy(dst,src);
+
+			for(int i=0;i<30;i++)
+			{
+				if(i==0)
+				     a[i].point.x=0;
+				 else
+					 a[i].point.x=a[i-1].point.x+SIZE+10;
+			}
+		 if(flag)
+		    for(int i=0;i<KS;i++)
+			     a[i].YON=0;
+
+		  for (tempSeq = seq;tempSeq != NULL; tempSeq=tempSeq->h_next)  
+			     {  	 
+				      length = cvArcLength(tempSeq);  
+				      area =   cvContourArea(tempSeq);  
+				      rect =   cvBoundingRect(tempSeq,0);  
+					  double res=double(rect.height)/double(rect.width);   
+
+					 if( area > Toc.MinArea && area < Toc.MaxArea)
+					 {
+					  if(rect.y>UpBoundary &&rect.y<LowBoundary)
+					  {   
+	            	        ObjWidth=rect.width*H/((H-RoadFarNearDis+rect.y-30));
+							 
+                         if ((ObjWidth >VStdWidth-20)||area*H*H/((H-RoadFarNearDis+rect.y-30)*(H-RoadFarNearDis+rect.y-30))>VStdSize)
+						   {
+							if(res>0.7&&res<2)
+				            {  
+							   p++;
+							   center1.x=rect.x+rect.width/2;
+					           center1.y=rect.y+rect.height/2;
+							   flag=1;
+					           b=1;
+								if(ZS==1)
+								{
+								  num=mm;
+								  a[num].OrbitSort=Toc.DisCompute(center1,dst,DisToCam);
+								  if(a[num].OrbitSort!=0)
+								       {
+									        if(a[num].OrbitSort==-1)
+										        sprintf(tmpPosition,"��ʱ,��%d����λ��1��2�����м����ϣ���������ͷ%.3f��",num+1,DisToCam);
+									        if(a[num].OrbitSort==-2)
+										        sprintf(tmpPosition,"��ʱ,��%d����λ��3��4�����м����ϣ���������ͷ%.3f��",num+1,DisToCam);
+									        if(a[num].OrbitSort!=-1&&a[num].OrbitSort!=-2)
+									            sprintf(tmpPosition,"��ʱ,��%d����λ�ڵ�%d��������������ͷ%.3f��",num+1,a[num].OrbitSort,DisToCam);
+											s=tmpPosition;
+									        a[num].position.push_back(s);
+								       }
+                    //            sprintf(play,"%.3f%c",DisToCam,'m');
+					//			  cvPutText(dst,play, cvPoint(rect.x,center1.y), & Toc.font, CV_RGB(255,0,0));
+                    //            Toc.DrawOrbit(center1,center1,OrbitImg);
+					//			  imshow("�����켣ͼ",OrbitImg);
+					//			  startPoint.y=0;
+					//			  startPoint.x+=SIZE+10;
+					//			  a[num].point=startPoint;
+								  cvSetImageROI(dst,rect);	
+								  IplImage*t=cvCreateImage(cvSize(SIZE,SIZE),dst->depth,dst->nChannels);
+								  cvResize(dst,t,1);
+								  Mat tp=Mat(t);
+								  Toc.imageOut(tp,image_out,a[num].point);
+					//			  imageNum++;
+					//			  startPoint.x+=110;
+								  imshow("image_outs",image_out);
+								  cvWaitKey(10);
+					//			  if(imageNum%7==0)
+					//			  {
+					//				  startPoint.x=10;
+					//				  startPoint.y+=130;
+					//			  }
+						
+			//				      Toc.videoCut(dst,k);
+			//					  k++;
+								  cvResetImageROI(dst);
+				                  cvRectangleR(dst,rect,CV_RGB(255,0,0));
+								  a[num].rect=rect;
+								  a[num].center=center1;
+							      a[num].YON=1;
+								  mm++;	 
+
+							   }
+								
+								else
+								{
+								   for(int q=mm-KS-tag;q<mm;q++)
+									{
+										if(a[q].YON==0)
+											continue;
+										center2=a[q].center;
+										if(abs(center1.y-center2.y)<25&&abs(center1.x-center2.x)<10)
+									      {
+											 num=q;
+										     a[num].OrbitSort=Toc.DisCompute(center1,dst,DisToCam);
+											 if(a[num].OrbitSort!=0)
+								               {
+									             if(a[num].OrbitSort==-1)
+										            sprintf(tmpPosition,"��ʱ,��%d����λ��1��2�����м����ϣ���������ͷ%.3f��",num+1,DisToCam);
+									             if(a[num].OrbitSort==-2)
+										            sprintf(tmpPosition,"��ʱ,��%d����λ��3��4�����м����ϣ���������ͷ%.3f��",num+1,DisToCam);
+									             if(a[num].OrbitSort!=-1&&a[num].OrbitSort!=-2)
+									                sprintf(tmpPosition,"��ʱ,��%d����λ�ڵ�%d��������������ͷ%.3f��",num+1,a[num].OrbitSort,DisToCam);
+												 s=tmpPosition;
+									             a[num].position.push_back(s);
+								               }
+
+						//				     sprintf(play,"%.3f%c",DisToCam,'m');
+						//				     cvPutText(dst,play, cvPoint(rect.x,center1.y), & Toc.font, CV_RGB(255,0,0));
+						//				     Toc.DrawOrbit(a[q].center,center1,OrbitImg);
+						//				     imshow("�����켣ͼ",OrbitImg);
+
+								  cvSetImageROI(dst,rect);	
+								  IplImage*t=cvCreateImage(cvSize(SIZE,SIZE),dst->depth,dst->nChannels);
+								  cvResize(dst,t,1);
+								  Mat tp=Mat(t);
+								  Toc.imageOut(tp,image_out,a[q].point);
+						//		  imageNum++;
+								  a[q].point.y+=20;
+								  imshow("image_outs",image_out);
+								  cvWaitKey(10);
+
+										     a[q].rect=rect;
+										     a[q].center=center1;
+										     a[q].YON=1;
+										     cvRectangleR(dst,rect,CV_RGB(0,255,0));
+										     break;   
+										  }
+									
+									   if(q==mm-1)
+									   {
+										  num=mm;
+										  a[num].OrbitSort=Toc.DisCompute(center1,dst,DisToCam);
+										  if(a[num].OrbitSort!=0)
+								            {
+									             if(a[num].OrbitSort==-1)
+										            sprintf(tmpPosition,"��ʱ,��%d����λ��1��2�����м����ϣ���������ͷ%.3f��",num+1,DisToCam);
+									             if(a[num].OrbitSort==-2)
+										            sprintf(tmpPosition,"��ʱ,��%d����λ��3��4�����м����ϣ���������ͷ%.3f��",num+1,DisToCam);
+									             if(a[num].OrbitSort!=-1&&a[num].OrbitSort!=-2)
+									                sprintf(tmpPosition,"��ʱ,��%d����λ�ڵ�%d��������������ͷ%.3f��",num+1,a[num].OrbitSort,DisToCam);
+												 s=tmpPosition;
+									             a[num].position.push_back(s);
+								           }
+
+						//				  sprintf(play,"%.3f%c",DisToCam,'m');
+						//				  cvPutText(dst,play, cvPoint(rect.x,center1.y), & Toc.font, CV_RGB(255,0,0));
+						//			      Toc.DrawOrbit(a[q].center,a[q].center,OrbitImg);
+						//				  imshow("�����켣ͼ",OrbitImg);
+
+									      a[num].rect=rect;
+									      a[num].center=center1;
+									      a[num].YON=1;
+										  tag++;
+									      mm++;
+						//		  startPoint.y=0;
+						//		  startPoint.x+=SIZE+10;
+								  cvSetImageROI(dst,rect);	
+								  IplImage*t=cvCreateImage(cvSize(SIZE,SIZE),dst->depth,dst->nChannels);
+								  cvResize(dst,t,1);
+								  Mat tp=Mat(t);
+								  Toc.imageOut(tp,image_out,a[num].point);
+				//				  startPoint.x+=110;
+				//				  imageNum++;
+								  imshow("image_outs",image_out);
+								  cvWaitKey(10);
+				//				  if(imageNum%7==0)
+				//				  {
+				//					  startPoint.x=10;
+				//					  startPoint.y=130;
+				//				  }
+				//						  cvSaveImage("1.jpg",dst);
+				//					      Toc.videoCut(dst,k);
+				//				          k++;
+									      cvResetImageROI(dst);
+									      cvRectangleR(dst,rect,CV_RGB(0,0,255));   
+									   }		   
+									}
+								}	
+						      }		
+						  }
+					   } 
+					}
+				 }
+
+		  if(flag)
+		  {
+			 tag=0;
+		     ZS++;
+			 if(p>=KS)
+			    KS=p;
+		     p=0;
+		  }
+   }
+
+     if(b==0){  ZS=1;KS=0;flag=0;}
+     b=0;
+	 cvNamedWindow("Rectvideo2",0);
+	 cvShowImage("Rectvideo2",dst);
+	 if(!start||cvWaitKey(10)==32)
+		cvWaitKey(0);
+	 else
+        cvWaitKey(1);
+	 start=1;
+}
+ // cout<<imageNum<<"::::";
+	cvDestroyWindow("Video");  
+	cvDestroyWindow("Background"); 
+
+	cvReleaseImage(&dst);
+	cvReleaseImage(&dstImg);
+	for(int i=0;i<FMAX;i++)
+	{
+		cvReleaseImage(&pImg[i]); 
+		cvReleaseImage(&pBkImg[i]); 
+		cvReleaseMat(&pFrameMat[i]);
+	}
+	for(int i=0;i<FMAX-1;i++)
+	{
+		cvReleaseImage(&pDiffImg[i]); 
+		cvReleaseMat(&pDiffMat[i]); 		
+	}
+
+	ofstream out("CarImformation.txt");
+	for(int i=0;i<mm;i++)
+		for(int j=0;j<a[i].position.size();j++)
+			out<<a[i].position[j]<<endl;
+//	cout<<"���� "<<mm<<" ����"<<endl;
+//	cout<<"��������Ҫ�鿴�ĳ�����Ϣ,���ڼ����������복����˳����:"<<endl;
+//	cout<<"ע��Ĭ�ϴ������ҳ����ֱ�Ϊ��1������2������3������4����"<<endl;
+/*
+	int cinN;
+	cin>>cinN;
+	while(cinN)
+	{
+	  for(int i=0;i<a[cinN-1].position.size();i++)
+		 cout<<a[cinN-1].position[i]<<endl;
+	  cin>>cinN;
+	}
+*/
+	cout<<"��ʾ���н���������"<<endl;
+	system("pause");
+	return 0;
+	
+}  
+
