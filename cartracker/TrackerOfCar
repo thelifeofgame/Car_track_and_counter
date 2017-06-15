@@ -1,0 +1,103 @@
+
+#include "stdafx.h"
+#include"TrackOfCar.h"
+#include "highgui.h"
+#include "cv.h"
+#include <iostream>
+#include <math.h>
+#include<opencv2\core\core.hpp>
+using namespace std;
+using namespace cv;
+
+#define PI 3.142 
+#define arg1 80
+#define arg2 20
+#define CamHeight 5
+
+TrackOfCar::TrackOfCar(void)
+{
+  LisenceLong=490;
+  LisenceShort=180;
+  MinLisence=0.13;
+  MaxLisence=0.8;
+  MinArea=LisenceLong*LisenceShort*MinLisence*MinLisence;
+  MaxArea=LisenceLong*LisenceShort*MaxLisence*MaxLisence;
+  cvInitFont(&font,CV_FONT_HERSHEY_COMPLEX, 0.5, 0.5, 1, 1, 8); 
+}
+TrackOfCar::~TrackOfCar(void){}
+void TrackOfCar::DrawOrbit(CvPoint pt1, CvPoint pt2,Mat&img)
+{
+	line(img,pt1,pt2,Scalar(255,0,0),2, 8);
+}
+int TrackOfCar::videoCut(   IplImage* p,int i)  
+{  
+   
+    IplImage *frame =p;  
+   
+    char *AviSavePath = "qwer\\";//ͼƬ������λ��   
+  
+    char tmpfile[1000]={'\0'};  
+
+    sprintf(tmpfile,"%s//%d.jpg",AviSavePath,i);//ʹ��֡����ΪͼƬ��  
+	cvSaveImage(tmpfile,frame); 
+               
+    return 0;  
+}  
+void TrackOfCar::getAve( IplImage * p[],int n,IplImage * dst )
+{
+    cvZero(dst);  
+    //double M ,m;
+   
+    IplImage*t =cvCreateImage(cvSize(dst->width, dst->height), 
+    IPL_DEPTH_8U,1);
+    
+    cvZero(t);  
+    for(int i=0;i<n;i++)
+	{
+        cvConvertScale(p[i],t,1.0/n);
+        cvAdd(dst,t,dst);  
+     }
+    /*cvSetImageCOI(dst,1 );
+     cvMinMaxLoc(dst, &m, &M);  
+	cvResetImageROI(dst);
+	cvScale(dst, dst, 255/(M-m), 255*(-m)/(M-m));
+	
+	//   cvAdd(dst,tmp,dst);*/
+	cvConvertScale(dst, dst, 1, 0);
+	cvReleaseImage(&t);
+}
+void TrackOfCar::InitOrbitMat(Mat&Orbit)
+{
+	line(Orbit,Point(1,182),Point(141,33),Scalar(0,0,0),1,8);
+	line(Orbit,Point(69,209),Point(154,33),Scalar(0,0,0),1,8);
+	line(Orbit,Point(165,207),Point(168,34),Scalar(0,0,05),3,8);
+	line(Orbit,Point(267,209),Point(184,32),Scalar(0,0,0),1,8);
+	line(Orbit,Point(317,149),Point(200,32),Scalar(0,0,0),1,8);
+}
+int TrackOfCar::DisCompute(CvPoint p,IplImage*dst,double&DisToCam)
+{
+	double longth,y,x;
+	longth=(tan(arg1/180.000*PI)-tan(arg2/180.000*PI))*CamHeight;
+	y=tan(arg2/180.000*PI)*CamHeight+(double)(dst->height-p.y)/(double)dst->height*longth;
+	x=(p.x-dst->width/2.000)*(double)(5*dst->height)/(double)(dst->height+4*p.y)*(15.000/dst->width);
+	DisToCam=sqrt(x*x+y*y+CamHeight*CamHeight);
+	if(x>=-7.5&&x<=-4.2)
+		return 1;
+	if(x<=-3.75&&x>=-4.2)
+		return -1;
+	if(x>=-3.75&&x<=0)
+		return 2;
+	if(x>=0&&x<=4)
+		return 3;
+	if(x>=4&&x<=6.7)
+		return -2;
+	if(x>=6.7&&x<=8.7)
+		return 4;
+	if(x<-7.5||x>8.7)
+		return 0;
+}
+void TrackOfCar::imageOut(Mat&tp,Mat&image_out,CvPoint startPoint)
+{
+	Mat imageROI = image_out(Rect(startPoint.x,startPoint.y,tp.cols,tp.rows));
+	tp.copyTo(imageROI);
+}
